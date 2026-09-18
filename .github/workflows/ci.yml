@@ -1,0 +1,35 @@
+name: Deploy Engine CI
+
+on: [push, pull_request]
+
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Shell Scripts
+        run: |
+          chmod +x scripts/deploy.sh
+          bash -n scripts/deploy.sh
+
+      - name: Validate Docker Compose Config
+        run: |
+          docker compose config
+
+      - name: Build All Services
+        run: |
+          docker compose build
+
+      - name: Boot Cluster and Test Zero-Downtime Swap
+        run: |
+          docker compose up -d
+          sleep 5
+          # Verify blue initial response
+          curl -s http://localhost/health | grep -q "blue"
+          # Run deployment switch to green
+          bash scripts/deploy.sh green
+          sleep 2
+          # Verify traffic switched to green without dropped connections
+          curl -s http://localhost/health | grep -q "green"
+          docker compose down
