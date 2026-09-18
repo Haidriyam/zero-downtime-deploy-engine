@@ -9,23 +9,22 @@ if [ -z "$TARGET_COLOR" ]; then
 fi
 
 echo "[*] Initiating zero-downtime deployment switch to: ${TARGET_COLOR}"
-
 TARGET_CONTAINER="app_${TARGET_COLOR}"
 echo "[*] Target upstream container: ${TARGET_CONTAINER}:8080"
 
-# Update file directly without changing inode (avoiding sed -i inode break on bind mounts)
-python3 -c "
-with open('./nginx/default.conf', 'r') as f:
-    content = f.read()
-import re
-new_content = re.sub(r'server app_[a-z]+:8080', 'server ${TARGET_CONTAINER}:8080', content)
-with open('./nginx/default.conf', 'w') as f:
-    f.write(new_content)
-"
+# Target the configuration inside the mounted directory
+CONFIG_FILE="./nginx/conf.d/default.conf"
 
-# Copy directly into running container to guarantee the change is reflected immediately
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "[!] Error: $CONFIG_FILE does not exist."
+    exit 1
+fi
+
+# Update upstream on the host system
+sed -i "s/server app_[a-z]*:8080/server ${TARGET_CONTAINER}:8080/" "$CONFIG_FILE"
+
+# Instruct Nginx to reload without breaking connections
 if docker ps | grep -q reverse_proxy; then
-    docker cp ./nginx/default.conf reverse_proxy:/etc/nginx/conf.d/default.conf
     docker exec reverse_proxy nginx -t
     docker exec reverse_proxy nginx -s reload
     echo "[+] Nginx upstream successfully reloaded to ${TARGET_COLOR} with 0s downtime."
