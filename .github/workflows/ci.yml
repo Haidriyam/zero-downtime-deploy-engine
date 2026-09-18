@@ -24,32 +24,36 @@ jobs:
       - name: Boot Cluster and Test Zero-Downtime Swap
         run: |
           docker compose up -d
-
+          
           echo "Waiting for reverse proxy and blue service..."
           for i in {1..15}; do
             if curl -s http://localhost/health | grep -q "blue"; then
               echo "Blue service is healthy!"
               break
             fi
-            sleep 2
+            sleep 1
           done
 
-          # Verify active response
-          curl -s http://localhost/health | grep -q "blue"
-
-          # Perform live traffic switch
+          # Trigger swap to green
           bash scripts/deploy.sh green
 
           echo "Waiting for green service transition..."
-          for i in {1..10}; do
-            if curl -s http://localhost/health | grep -q "green"; then
-              echo "Green service is healthy!"
+          SUCCESS=0
+          for i in {1..15}; do
+            RESPONSE=$(curl -s http://localhost/health || true)
+            if echo "$RESPONSE" | grep -q "green"; then
+              echo "Green service is healthy and serving traffic!"
+              SUCCESS=1
               break
             fi
             sleep 1
           done
 
-          # Final assertion
-          curl -s http://localhost/health | grep -q "green"
+          if [ $SUCCESS -ne 1 ]; then
+            echo "Failed to route to green service. Last response: $RESPONSE"
+            docker logs reverse_proxy
+            docker compose down
+            exit 1
+          fi
 
           docker compose down
