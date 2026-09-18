@@ -1,3 +1,4 @@
+version: '3.8'
 
 services:
   reverse_proxy:
@@ -7,7 +8,7 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:rw
     depends_on:
       - app_blue
     restart: always
