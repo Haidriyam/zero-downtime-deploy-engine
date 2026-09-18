@@ -11,15 +11,14 @@ fi
 echo "[*] Initiating zero-downtime deployment switch to: ${TARGET_COLOR}"
 
 TARGET_CONTAINER="app_${TARGET_COLOR}"
-echo "[*] Polling target health on ${TARGET_CONTAINER}:8080/health..."
+echo "[*] Target upstream container: ${TARGET_CONTAINER}:8080"
 
-# Dynamically rewrite default.conf
+# Dynamically rewrite default.conf on host
 sed -i "s/server app_[a-z]*:8080/server ${TARGET_CONTAINER}:8080/" ./nginx/default.conf
 
-# Check if reverse_proxy is running and hot-reload
+# Overwrite config inside running container without unlinking the mount inode
 if docker ps | grep -q reverse_proxy; then
-    # Copy fresh conf directly into the running proxy container
-    docker cp ./nginx/default.conf reverse_proxy:/etc/nginx/conf.d/default.conf
+    docker exec -i reverse_proxy sh -c 'cat > /etc/nginx/conf.d/default.conf' < ./nginx/default.conf
     docker exec reverse_proxy nginx -s reload
     echo "[+] Nginx upstream successfully reloaded to ${TARGET_COLOR} with 0s downtime."
 else
