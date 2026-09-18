@@ -24,12 +24,40 @@ jobs:
       - name: Boot Cluster and Test Zero-Downtime Swap
         run: |
           docker compose up -d
-          sleep 5
-          # Verify initial blue response
-          curl -s http://localhost/health | grep -q "blue"
-          # Execute upstream switch to green
+          
+          # Poll until Nginx proxy and blue node respond
+          echo "[*] Waiting for initial blue upstream..."
+          for i in {1..10}; do
+            RESPONSE=$(curl -s http://localhost/health || true)
+            if echo "$RESPONSE" | grep -q "blue"; then
+              echo "[+] Blue cluster healthy: $RESPONSE"
+              break
+            fi
+            echo "Waiting for blue response (attempt $i)..."
+            sleep 2
+          done
+
+          # Execute zero-downtime swap to green
           bash scripts/deploy.sh green
-          sleep 2
-          # Verify upstream switched to green
-          curl -s http://localhost/health | grep -q "green"
+
+          # Poll until traffic flips to green
+          echo "[*] Verifying traffic shift to green upstream..."
+          SUCCESS=0
+          for i in {1..10}; do
+            RESPONSE=$(curl -s http://localhost/health || true)
+            if echo "$RESPONSE" | grep -q "green"; then
+              echo "[+] Green cluster active and serving: $RESPONSE"
+              SUCCESS=1
+              break
+            fi
+            echo "Waiting for green response (attempt $i)..."
+            sleep 1
+          done
+
+          if [ $SUCCESS -ne 1 ]; then
+            echo "[!] Deployment check failed to verify green cluster."
+            docker compose logs
+            exit 1
+          fi
+
           docker compose down
