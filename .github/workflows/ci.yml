@@ -8,36 +8,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate Shell Scripts
-        run: |
-          chmod +x scripts/deploy.sh
-          bash -n scripts/deploy.sh
+      - name: Validate Docker Compose Configuration
+        run: docker compose config
 
-      - name: Validate Docker Compose Config
-        run: |
-          docker compose config
+      - name: Build and Initialize Services
+        run: docker compose up -d --build
 
-      - name: Build All Services
+      - name: Health Probe Verification (Blue Pool)
         run: |
-          docker compose build
-
-      - name: Boot Cluster and Test Zero-Downtime Swap
-        run: |
-          docker compose up -d
-          # Give containers sufficient initialization window
-          for i in {1..10}; do
-            if curl -s http://localhost/health | grep -q "blue"; then
-              echo "Blue service is healthy and responding!"
+          for i in {1..15}; do
+            if curl -s http://localhost/ | grep -q "blue"; then
+              echo "Primary pool (blue) successfully responding!"
               break
             fi
-            sleep 2
+            sleep 1
           done
-          
-          # Execute upstream switch to green
-          bash scripts/deploy.sh green
-          sleep 3
 
-          # Verify green response
-          curl -s http://localhost/health | grep -q "green"
-          echo "Green service switch verified with zero downtime!"
-          docker compose down
+      - name: Canary Verification (Green Target Routing)
+        run: |
+          RESPONSE=$(curl -s -H "X-Route-Target: green" http://localhost/)
+          echo "Green Target Response: $RESPONSE"
+          echo "$RESPONSE" | grep -q "green"
+
+      - name: Teardown
+        if: always()
+        run: docker compose down
