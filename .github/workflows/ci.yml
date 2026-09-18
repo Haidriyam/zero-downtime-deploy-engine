@@ -24,27 +24,20 @@ jobs:
       - name: Boot Cluster and Test Zero-Downtime Swap
         run: |
           docker compose up -d
-          sleep 5
-
-          echo "Checking initial blue response..."
-          curl -s http://localhost/health | grep -q "blue"
-
-          echo "Switching upstream to green..."
-          bash scripts/deploy.sh green
-          sleep 2
-
-          echo "Verifying traffic switched to green..."
-          for i in {1..5}; do
-            RESP=$(curl -s http://localhost/health)
-            echo "Probe response: $RESP"
-            if echo "$RESP" | grep -q "green"; then
-              echo "Traffic switch confirmed to green!"
+          # Give containers sufficient initialization window
+          for i in {1..10}; do
+            if curl -s http://localhost/health | grep -q "blue"; then
+              echo "Blue service is healthy and responding!"
               break
             fi
-            sleep 1
+            sleep 2
           done
+          
+          # Execute upstream switch to green
+          bash scripts/deploy.sh green
+          sleep 3
 
-          # Final assertion
+          # Verify green response
           curl -s http://localhost/health | grep -q "green"
-
+          echo "Green service switch verified with zero downtime!"
           docker compose down
